@@ -16,7 +16,7 @@ makedirs(USER_RECORDS_DIRECTORY, exist_ok=True)
 
 users = UserStorage(USER_RECORDS_DIRECTORY)
 termometers = TermometerHandler(TERMOMETR_RECORDS_DIRECTORY)
-bot = TermometerBot(termometers, getenv("TELEGRAM_BOT_TOKEN"), getenv("http_proxy"))
+bot = TermometerBot(termometers, users, getenv("TELEGRAM_BOT_TOKEN"), getenv("http_proxy"))
 
 termometers.load_all_termometrs()
 users.load_users()
