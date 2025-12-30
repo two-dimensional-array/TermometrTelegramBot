@@ -48,10 +48,20 @@ class Termometr:
             with open(self.__get_records_file_name(records_directory_path), "r", newline="") as csvfile:
                 reader = csv.DictReader(csvfile, fieldnames=self.__RECORDS_FIELDNAMES)
                 self.records = [row for row in reader]
+
+                for item in reader:
+                    record = {
+                        "name"        : str(item["name"]),
+                        "temperature" : float(item["temperature"]),
+                        "humidity"    : float(item["humidity"]),
+                        "timestamp"   : str(item["timestamp"])
+                    }
+                    self.records.append(record)
+
                 last_record = self.records[-1]
                 self.name = last_record["name"]
-                self.temperature = float(last_record["temperature"])
-                self.humidity = float(last_record["humidity"])
+                self.temperature = last_record["temperature"]
+                self.humidity = last_record["humidity"]
         except FileNotFoundError:
             self.records = []
 

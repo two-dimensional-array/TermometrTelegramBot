@@ -19,7 +19,7 @@ class AccessMiddleware(BaseMiddleware):
         event: Message,
         data: Dict[str, Any]
     ) -> Any:
-        if self.users.find_user_by_id(str(event.from_user.id)) is None:
+        if self.users.find_user_by_id(event.from_user.id) is None:
             return
 
         return await handler(event, data)
@@ -65,10 +65,10 @@ class TermometerBot():
             loop.run_until_complete(self.bot.session.close())
             loop.close()
 
-    async def __delete_previous_message(self, user_id: str):
+    async def __delete_previous_message(self, user_id: int):
         """Delete the previous message sent by the bot to the user."""
         try:
-            user_data = self.users.find_user_by_id(str(user_id))
+            user_data = self.users.find_user_by_id(user_id)
             print(user_data)
             if user_data is not None:
                 await self.bot.delete_message(chat_id=int(user_data["chat_id"]), message_id=int(user_data["last_msg_id"]))
@@ -88,7 +88,7 @@ class TermometerBot():
     async def __send_termometers_keyboard(self, message: Message, user_id=None):
         """Internal helper: send keyboard with all termometers and log actions."""
         if user_id is None:
-            user_id = str(message.from_user.id)
+            user_id = message.from_user.id
 
         print(f"__send_termometers_keyboard invoked by {user_id}")
         try:
@@ -142,9 +142,9 @@ class TermometerBot():
             return
 
         term_data = data[5:].split("_")
-        term_id = term_data[0]
-        user_id = term_data[1]
-        term = next((t for t in self.termometers.get_all_termometrs() if str(t.id) == str(term_id)), None)
+        term_id = int(term_data[0])
+        user_id = int(term_data[1])
+        term = self.termometers.find_termometr_by_id(term_id)
         if term is None:
             await callback.answer("Termometer not found.", show_alert=True)
             return
@@ -156,6 +156,7 @@ class TermometerBot():
         back_kb = InlineKeyboardMarkup(
             inline_keyboard=[[InlineKeyboardButton(text="⬅️ Back to list", callback_data=f"back_to_list_{user_id}")]]
         )
+        await self.__delete_previous_message(user_id)
         sent_message = await callback.message.answer(text, parse_mode="Markdown", reply_markup=back_kb)
         self.users.set_last_msg_id(user_id, sent_message.message_id, sent_message.chat.id)
         await callback.answer()
