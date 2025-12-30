@@ -13,7 +13,7 @@ class AccessMiddleware(BaseMiddleware):
         super().__init__()
         self.users = users
 
-    async def call(
+    async def __call__(
         self,
         handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
         event: Message,
