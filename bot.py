@@ -131,7 +131,7 @@ class TermometerBot():
         data = callback.data or ""
         if data.startswith("back_to_list_"):
             # Return to the termometer list
-            user_id = data[13:]
+            user_id = int(data[13:])
             await self.__delete_previous_message(user_id)
             await self.__send_termometers_keyboard(callback.message, user_id)
             await callback.answer()
@@ -149,9 +149,7 @@ class TermometerBot():
             await callback.answer("Termometer not found.", show_alert=True)
             return
 
-        text = (f"*{term.name}*\n"
-                f"Temperature: \t{term.temperature:.2f} °C\n"
-                f"Humidity: \t{term.humidity:.2f} %")
+        text = (f"*{term.name}*\nTemperature: \t{float(term.temperature):.2f} °C\nHumidity: \t{float(term.humidity):.2f} %")
         # Add a button to return to the list
         back_kb = InlineKeyboardMarkup(
             inline_keyboard=[[InlineKeyboardButton(text="⬅️ Back to list", callback_data=f"back_to_list_{user_id}")]]

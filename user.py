@@ -12,7 +12,13 @@ class UserStorage:
         try:
             with open(self.user_storage_file_path, "r", newline="") as csvfile:
                 reader = csv.DictReader(csvfile, fieldnames=self.__RECORDS_FIELDNAMES)
+                first = True
                 for item in reader:
+                    # Skip header row if present
+                    if first and item["user_id"] == "user_id":
+                        first = False
+                        continue
+                    first = False
                     user_record = {
                         "user_id"     : int(item["user_id"]),
                         "last_msg_id" : int(item["last_msg_id"]),
