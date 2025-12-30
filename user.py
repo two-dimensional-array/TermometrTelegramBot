@@ -20,9 +20,9 @@ class UserStorage:
                         continue
                     first = False
                     user_record = {
-                        "user_id"     : int(item["user_id"]),
-                        "last_msg_id" : int(item["last_msg_id"]),
-                        "chat_id"     : int(item["chat_id"])
+                        "user_id"     : int(item["user_id"]) if item["user_id"] else None,
+                        "last_msg_id" : int(item["last_msg_id"]) if item["last_msg_id"] else None,
+                        "chat_id"     : int(item["chat_id"]) if item["chat_id"] else None
                     }
                     self.user_data.append(user_record)
         except FileNotFoundError:

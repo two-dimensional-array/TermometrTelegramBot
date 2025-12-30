@@ -65,15 +65,37 @@ class TermometerBot():
             loop.run_until_complete(self.bot.session.close())
             loop.close()
 
-    async def __delete_previous_message(self, user_id: int):
+    async def __message_answer(self, message: Message, user_id: int, text:str, reply_markup=None):
+        if not await self.__edit_previous_message(user_id, text, reply_markup):
+            await self.__delete_previous_message(user_id)
+            sent_message = await message.answer(text, parse_mode="Markdown", reply_markup=reply_markup)
+            self.users.set_last_msg_id(user_id, sent_message.message_id, sent_message.chat.id)
+
+    async def __delete_previous_message(self, user_id: int) -> bool:
         """Delete the previous message sent by the bot to the user."""
         try:
             user_data = self.users.find_user_by_id(user_id)
-            print(user_data)
             if user_data is not None:
                 await self.bot.delete_message(chat_id=int(user_data["chat_id"]), message_id=int(user_data["last_msg_id"]))
+                return True
+            else:
+                return False
         except Exception as e:
             print(f"Failed to delete previous message for user {user_id}: {e}")
+            return False
+
+    async def __edit_previous_message(self, user_id: int, text:str, reply_markup=None) -> bool:
+        """Edit the previous message sent by the bot to the user."""
+        try:
+            user_data = self.users.find_user_by_id(user_id)
+            if user_data is not None:
+                await self.bot.edit_message_text(text=text, reply_markup=reply_markup, chat_id=int(user_data["chat_id"]), message_id=int(user_data["last_msg_id"]))
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(f"Failed to edit previous message for user {user_id}: {e}")
+            return False
 
     def __build_termometers_keyboard(self, user_id):
         """Build an inline keyboard with one button per termometer (uses termometer id in callback).
@@ -92,22 +114,17 @@ class TermometerBot():
 
         print(f"__send_termometers_keyboard invoked by {user_id}")
         try:
-            await self.__delete_previous_message(user_id)
-
             if not self.termometers.get_all_termometrs():
-                sent_message = await message.answer("No termometers available.")
-                self.users.set_last_msg_id(user_id, sent_message.message_id, sent_message.chat.id)
+                await self.__message_answer(message, user_id, "No termometers available.")
                 return
 
             kb = self.__build_termometers_keyboard(user_id)
-            sent_message = await message.answer("Select a termometer:", reply_markup=kb)
-            self.users.set_last_msg_id(user_id, sent_message.message_id, sent_message.chat.id)
+            await self.__message_answer(message, user_id, "Select a termometer:", reply_markup=kb)
         except Exception as e:
             print(f"Error sending termometers keyboard: {e}")
             # try to inform user
             try:
-                sent_message = await message.answer("Sorry, failed to display termometers.")
-                self.users.set_last_msg_id(user_id, sent_message.message_id, sent_message.chat.id)
+                await self.__message_answer(message, user_id, "Sorry, failed to display termometers.")
             except Exception as _:
                 pass
 
@@ -132,7 +149,6 @@ class TermometerBot():
         if data.startswith("back_to_list_"):
             # Return to the termometer list
             user_id = int(data[13:])
-            await self.__delete_previous_message(user_id)
             await self.__send_termometers_keyboard(callback.message, user_id)
             await callback.answer()
             return
@@ -154,7 +170,5 @@ class TermometerBot():
         back_kb = InlineKeyboardMarkup(
             inline_keyboard=[[InlineKeyboardButton(text="⬅️ Back to list", callback_data=f"back_to_list_{user_id}")]]
         )
-        await self.__delete_previous_message(user_id)
-        sent_message = await callback.message.answer(text, parse_mode="Markdown", reply_markup=back_kb)
-        self.users.set_last_msg_id(user_id, sent_message.message_id, sent_message.chat.id)
+        await self.__message_answer(callback.message, user_id, text, reply_markup=back_kb)
         await callback.answer()
