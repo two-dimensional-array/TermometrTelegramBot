@@ -39,7 +39,7 @@ class TermometerBot():
         self.router.message.register(self.list_handler, Command("list"))
         self.router.callback_query.register(self.termometer_callback)
 
-        self.dp.message.outer_middleware(AccessMiddleware())
+        self.dp.message.outer_middleware(AccessMiddleware(self.users))
 
     def set_webhook(self, webhook_url: str):
         loop = asyncio.new_event_loop()
@@ -64,31 +64,34 @@ class TermometerBot():
         finally:
             loop.run_until_complete(self.bot.session.close())
             loop.close()
-    
+
     async def __delete_previous_message(self, user_id: str):
         """Delete the previous message sent by the bot to the user."""
         try:
-            user_data = self.users.find_user_by_id(user_id)
-            if user_data and "message_id" in user_data and "chat_id" in user_data:
-                await self.bot.delete_message(chat_id=user_data["chat_id"], message_id=user_data["message_id"])
+            user_data = self.users.find_user_by_id(str(user_id))
+            print(user_data)
+            if user_data is not None:
+                await self.bot.delete_message(chat_id=int(user_data["chat_id"]), message_id=int(user_data["last_msg_id"]))
         except Exception as e:
             print(f"Failed to delete previous message for user {user_id}: {e}")
 
-    def __build_termometers_keyboard(self):
+    def __build_termometers_keyboard(self, user_id):
         """Build an inline keyboard with one button per termometer (uses termometer id in callback).
 
         Returns InlineKeyboardMarkup.
         """
         # aiogram v3 expects the InlineKeyboardMarkup to be constructed with an
         # `inline_keyboard` list of button rows (each row is a list of buttons).
-        buttons = [[InlineKeyboardButton(text=t.name, callback_data=f"term_{t.id}")] for t in self.termometers.get_all_termometrs()]
+        buttons = [[InlineKeyboardButton(text=t.name, callback_data=f"term_{t.id}_{user_id}")] for t in self.termometers.get_all_termometrs()]
         return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-    async def __send_termometers_keyboard(self, message: Message):
+    async def __send_termometers_keyboard(self, message: Message, user_id=None):
         """Internal helper: send keyboard with all termometers and log actions."""
-        print(f"__send_termometers_keyboard invoked by {getattr(message.from_user, 'id', 'unknown')}")
-        try:
+        if user_id is None:
             user_id = str(message.from_user.id)
+
+        print(f"__send_termometers_keyboard invoked by {user_id}")
+        try:
             await self.__delete_previous_message(user_id)
 
             if not self.termometers.get_all_termometrs():
@@ -96,14 +99,15 @@ class TermometerBot():
                 self.users.set_last_msg_id(user_id, sent_message.message_id, sent_message.chat.id)
                 return
 
-            kb = self.__build_termometers_keyboard()
+            kb = self.__build_termometers_keyboard(user_id)
             sent_message = await message.answer("Select a termometer:", reply_markup=kb)
             self.users.set_last_msg_id(user_id, sent_message.message_id, sent_message.chat.id)
         except Exception as e:
             print(f"Error sending termometers keyboard: {e}")
             # try to inform user
             try:
-                await message.answer("Sorry, failed to display termometers.")
+                sent_message = await message.answer("Sorry, failed to display termometers.")
+                self.users.set_last_msg_id(user_id, sent_message.message_id, sent_message.chat.id)
             except Exception as _:
                 pass
 
@@ -125,10 +129,11 @@ class TermometerBot():
     async def termometer_callback(self, callback: CallbackQuery):
         """Handle termometer selection from inline keyboard and send readings, with a return button."""
         data = callback.data or ""
-
-        if data == "back_to_list":
+        if data.startswith("back_to_list_"):
             # Return to the termometer list
-            await self.__send_termometers_keyboard(callback.message)
+            user_id = data[13:]
+            await self.__delete_previous_message(user_id)
+            await self.__send_termometers_keyboard(callback.message, user_id)
             await callback.answer()
             return
 
@@ -136,7 +141,9 @@ class TermometerBot():
             await callback.answer()
             return
 
-        term_id = data.split("term_", 1)[1]
+        term_data = data[5:].split("_")
+        term_id = term_data[0]
+        user_id = term_data[1]
         term = next((t for t in self.termometers.get_all_termometrs() if str(t.id) == str(term_id)), None)
         if term is None:
             await callback.answer("Termometer not found.", show_alert=True)
@@ -147,9 +154,8 @@ class TermometerBot():
                 f"Humidity: \t{term.humidity:.2f} %")
         # Add a button to return to the list
         back_kb = InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="⬅️ Back to list", callback_data="back_to_list")]]
+            inline_keyboard=[[InlineKeyboardButton(text="⬅️ Back to list", callback_data=f"back_to_list_{user_id}")]]
         )
         sent_message = await callback.message.answer(text, parse_mode="Markdown", reply_markup=back_kb)
-        user_id = str(callback.message.from_user.id)
         self.users.set_last_msg_id(user_id, sent_message.message_id, sent_message.chat.id)
         await callback.answer()

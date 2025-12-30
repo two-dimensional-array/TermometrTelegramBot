@@ -1,6 +1,5 @@
 import csv
 from os.path import realpath
-from enum import Enum
 
 class UserStorage:
     __RECORDS_FIELDNAMES = ("user_id", "last_msg_id", "chat_id")
@@ -23,19 +22,20 @@ class UserStorage:
                 return user
         return None
 
-    def add_user(self, id: str, chat_id: str):
+    def add_user(self, id: str):
         if self.find_user_by_id(id) is None:
             user_record = {
                 "user_id" : id,
                 "last_msg_id" : None,
-                "chat_id" : chat_id
+                "chat_id" : None
             }
             self.user_data.append(user_record)
 
-    def set_last_msg_id(self, id: str, msg_id: str):
+    def set_last_msg_id(self, id: str, msg_id: str, chat_id: str):
         user = self.find_user_by_id(id)
         if user is not None:
             user["last_msg_id"] = msg_id
+            user["chat_id"] = chat_id
 
     def save_user_data(self):
         with open(self.user_storage_file_path, "w", newline="") as csvfile:

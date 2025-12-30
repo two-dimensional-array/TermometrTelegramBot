@@ -14,7 +14,7 @@ makedirs(TERMOMETR_RECORDS_DIRECTORY, exist_ok=True)
 USER_RECORDS_DIRECTORY = "./user_records"
 makedirs(USER_RECORDS_DIRECTORY, exist_ok=True)
 
-users = UserStorage(USER_RECORDS_DIRECTORY)
+users = UserStorage(f"{USER_RECORDS_DIRECTORY}/users.csv")
 termometers = TermometerHandler(TERMOMETR_RECORDS_DIRECTORY)
 bot = TermometerBot(termometers, users, getenv("TELEGRAM_BOT_TOKEN"), getenv("http_proxy"))
 
