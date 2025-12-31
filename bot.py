@@ -35,8 +35,6 @@ class TermometerBot():
 
         self.dp.include_router(self.router)
         self.router.message.register(self.start_handler, CommandStart())
-        self.router.message.register(self.termometers_handler, Command("termometers"))
-        self.router.message.register(self.list_handler, Command("list"))
         self.router.callback_query.register(self.termometer_callback)
 
         self.dp.message.outer_middleware(AccessMiddleware(self.users))
@@ -66,35 +64,29 @@ class TermometerBot():
             loop.close()
 
     async def __message_answer(self, message: Message, user_id: int, text:str, reply_markup=None):
-        if not await self.__edit_previous_message(user_id, text, reply_markup):
-            await self.__delete_previous_message(user_id)
-            sent_message = await message.answer(text, parse_mode="Markdown", reply_markup=reply_markup)
-            self.users.set_last_msg_id(user_id, sent_message.message_id, sent_message.chat.id)
+        user = self.users.find_user_by_id(user_id)
+        if user is not None:
+            if not await self.__edit_previous_message(user, text, reply_markup):
+                await self.__delete_previous_message(user)
+                sent_message = await message.answer(text, parse_mode="Markdown", reply_markup=reply_markup)
+                self.users.set_last_msg_id(user_id, sent_message.message_id, sent_message.chat.id)
 
-    async def __delete_previous_message(self, user_id: int) -> bool:
+    async def __delete_previous_message(self, user: dict) -> bool:
         """Delete the previous message sent by the bot to the user."""
         try:
-            user_data = self.users.find_user_by_id(user_id)
-            if user_data is not None:
-                await self.bot.delete_message(chat_id=int(user_data["chat_id"]), message_id=int(user_data["last_msg_id"]))
-                return True
-            else:
-                return False
+            await self.bot.delete_message(chat_id=int(user["chat_id"]), message_id=int(user["last_msg_id"]))
+            return True
         except Exception as e:
-            print(f"Failed to delete previous message for user {user_id}: {e}")
+            print(f"Failed to delete previous message with id {user['last_msg_id']} for user {user['user_id']}: {e}")
             return False
 
-    async def __edit_previous_message(self, user_id: int, text:str, reply_markup=None) -> bool:
+    async def __edit_previous_message(self, user: dict, text:str, reply_markup=None) -> bool:
         """Edit the previous message sent by the bot to the user."""
         try:
-            user_data = self.users.find_user_by_id(user_id)
-            if user_data is not None:
-                await self.bot.edit_message_text(text=text, reply_markup=reply_markup, chat_id=int(user_data["chat_id"]), message_id=int(user_data["last_msg_id"]))
-                return True
-            else:
-                return False
+            await self.bot.edit_message_text(text=text, parse_mode="Markdown", reply_markup=reply_markup, chat_id=int(user["chat_id"]), message_id=int(user["last_msg_id"]))
+            return True
         except Exception as e:
-            print(f"Failed to edit previous message for user {user_id}: {e}")
+            print(f"Failed to edit previous message with id {user['last_msg_id']} for user {user['user_id']}: {e}")
             return False
 
     def __build_termometers_keyboard(self, user_id):
@@ -102,10 +94,13 @@ class TermometerBot():
 
         Returns InlineKeyboardMarkup.
         """
-        # aiogram v3 expects the InlineKeyboardMarkup to be constructed with an
-        # `inline_keyboard` list of button rows (each row is a list of buttons).
         buttons = [[InlineKeyboardButton(text=t.name, callback_data=f"term_{t.id}_{user_id}")] for t in self.termometers.get_all_termometrs()]
         return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    def __build_termometer_menu_keyboard(self, user_id):
+        return InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="⬅️ Back to list", callback_data=f"back_to_list_{user_id}")]]
+        )
 
     async def __send_termometers_keyboard(self, message: Message, user_id=None):
         """Internal helper: send keyboard with all termometers and log actions."""
@@ -122,7 +117,6 @@ class TermometerBot():
             await self.__message_answer(message, user_id, "Select a termometer:", reply_markup=kb)
         except Exception as e:
             print(f"Error sending termometers keyboard: {e}")
-            # try to inform user
             try:
                 await self.__message_answer(message, user_id, "Sorry, failed to display termometers.")
             except Exception as _:
@@ -130,16 +124,6 @@ class TermometerBot():
 
     async def start_handler(self, message: Message):
         print("/start handler called")
-        await message.delete()
-        await self.__send_termometers_keyboard(message)
-
-    async def termometers_handler(self, message: Message):
-        print("/termometers handler called")
-        await message.delete()
-        await self.__send_termometers_keyboard(message)
-
-    async def list_handler(self, message: Message):
-        print("/list handler called")
         await message.delete()
         await self.__send_termometers_keyboard(message)
 
@@ -166,9 +150,6 @@ class TermometerBot():
             return
 
         text = (f"*{term.name}*\nTemperature: \t{float(term.temperature):.2f} °C\nHumidity: \t{float(term.humidity):.2f} %")
-        # Add a button to return to the list
-        back_kb = InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="⬅️ Back to list", callback_data=f"back_to_list_{user_id}")]]
-        )
+        back_kb = self.__build_termometer_menu_keyboard(user_id)
         await self.__message_answer(callback.message, user_id, text, reply_markup=back_kb)
         await callback.answer()
