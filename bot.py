@@ -5,6 +5,7 @@ from aiogram import Bot, Dispatcher, Router, BaseMiddleware
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery, Update, TelegramObject
 from aiogram.filters import CommandStart
 from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.exceptions import TelegramBadRequest
 from typing import Callable, Dict, Any, Awaitable
 import asyncio
 from enum import Enum
@@ -98,6 +99,12 @@ class TermometerBot():
         try:
             await self.bot.edit_message_text(text=text, parse_mode="Markdown", reply_markup=reply_markup, chat_id=int(user["chat_id"]), message_id=int(user["last_msg_id"]))
             return True
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e):
+                return True
+            else:
+                print(f"Failed to edit previous message with id {user['last_msg_id']} for user {user['user_id']}: {e}")
+                return False
         except Exception as e:
             print(f"Failed to edit previous message with id {user['last_msg_id']} for user {user['user_id']}: {e}")
             return False
