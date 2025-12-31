@@ -3,10 +3,11 @@ from user import UserStorage
 
 from aiogram import Bot, Dispatcher, Router, BaseMiddleware
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery, Update, TelegramObject
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import CommandStart
 from aiogram.client.session.aiohttp import AiohttpSession
 from typing import Callable, Dict, Any, Awaitable
 import asyncio
+from enum import Enum
 
 class AccessMiddleware(BaseMiddleware):
     def __init__(self, users: UserStorage):
@@ -25,6 +26,18 @@ class AccessMiddleware(BaseMiddleware):
         return await handler(event, data)
 
 class TermometerBot():
+    class CallBackType(Enum):
+        SHOW_TERMOMETER_INFO      = "terminfo"
+        RETURN_TO_TERMOMETER_LIST = "backtermlist"
+
+        def get_callback_data(self, user_id: int, arguments=None) -> str:
+            result = f"{self.value},{user_id}"
+            if arguments is not None:
+                for arg in arguments:
+                    result = result + f",{arg}"
+            print(result)
+            return result
+
     def __init__(self, termometers: TermometerHandler, users: UserStorage, token: str, proxy: str):
         self.session = AiohttpSession(proxy=proxy)
         self.bot = Bot(token=token, session=self.session)
@@ -35,7 +48,7 @@ class TermometerBot():
 
         self.dp.include_router(self.router)
         self.router.message.register(self.start_handler, CommandStart())
-        self.router.callback_query.register(self.termometer_callback)
+        self.router.callback_query.register(self.callback_handler)
 
         self.dp.message.outer_middleware(AccessMiddleware(self.users))
 
@@ -94,12 +107,24 @@ class TermometerBot():
 
         Returns InlineKeyboardMarkup.
         """
-        buttons = [[InlineKeyboardButton(text=t.name, callback_data=f"term_{t.id}_{user_id}")] for t in self.termometers.get_all_termometrs()]
+        buttons = [[InlineKeyboardButton(
+            text=t.name,
+            callback_data=self.CallBackType.SHOW_TERMOMETER_INFO.get_callback_data(user_id, [t.id])
+        )] for t in self.termometers.get_all_termometrs()]
         return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-    def __build_termometer_menu_keyboard(self, user_id):
+    def __build_termometer_menu_keyboard(self, user_id: int, term_id: int):
         return InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="⬅️ Back to list", callback_data=f"back_to_list_{user_id}")]]
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="⬅️ Back to list",
+                    callback_data=self.CallBackType.RETURN_TO_TERMOMETER_LIST.get_callback_data(user_id)
+                ),
+                InlineKeyboardButton(
+                    text="Update",
+                    callback_data=self.CallBackType.SHOW_TERMOMETER_INFO.get_callback_data(user_id, [term_id])
+                )
+            ]]
         )
 
     async def __send_termometers_keyboard(self, message: Message, user_id=None):
@@ -127,29 +152,24 @@ class TermometerBot():
         await message.delete()
         await self.__send_termometers_keyboard(message)
 
-    async def termometer_callback(self, callback: CallbackQuery):
-        """Handle termometer selection from inline keyboard and send readings, with a return button."""
-        data = callback.data or ""
-        if data.startswith("back_to_list_"):
-            # Return to the termometer list
-            user_id = int(data[13:])
-            await self.__send_termometers_keyboard(callback.message, user_id)
-            await callback.answer()
-            return
+    async def callback_handler(self, callback: CallbackQuery):
+        try:
+            data = callback.data.split(",")
+            event = self.CallBackType(data[0])
+            user_id = int(data[1])
 
-        if not data.startswith("term_"):
-            await callback.answer()
-            return
+            if event == self.CallBackType.SHOW_TERMOMETER_INFO:
+                term_id = int(data[2])
+                term = self.termometers.find_termometr_by_id(term_id)
+                if term is None:
+                    await callback.answer("Termometer not found.", show_alert=True)
+                else:
+                    text = f"*{term.name}*\nTemperature: {float(term.temperature):.2f}°C\nHumidity: {float(term.humidity):.2f} %"
+                    back_kb = self.__build_termometer_menu_keyboard(user_id, term_id)
+                    await self.__message_answer(callback.message, user_id, text, reply_markup=back_kb)
+            elif event == self.CallBackType.RETURN_TO_TERMOMETER_LIST:
+                await self.__send_termometers_keyboard(callback.message, user_id)
+        except Exception as _:
+            pass
 
-        term_data = data[5:].split("_")
-        term_id = int(term_data[0])
-        user_id = int(term_data[1])
-        term = self.termometers.find_termometr_by_id(term_id)
-        if term is None:
-            await callback.answer("Termometer not found.", show_alert=True)
-            return
-
-        text = (f"*{term.name}*\nTemperature: \t{float(term.temperature):.2f} °C\nHumidity: \t{float(term.humidity):.2f} %")
-        back_kb = self.__build_termometer_menu_keyboard(user_id)
-        await self.__message_answer(callback.message, user_id, text, reply_markup=back_kb)
         await callback.answer()
